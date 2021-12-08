@@ -40,11 +40,11 @@ def superResoluteFunc(maskedFileName, superResolution_model):
     fake_image = superResolution_model(hr_image)
     fake_image = tf.squeeze(fake_image)
 
-    SRImgfileName = maskedFileName.split('.')[0]  # + "_Super_Resoluted"
+    # SRImgfileName = maskedFileName.split('.')[0]  # + "_Super_Resoluted"
 
-    save_image(tf.squeeze(fake_image), filename=SRImgfileName)
+    save_image(tf.squeeze(fake_image), filename=maskedFileName)
 
-    return SRImgfileName
+    return maskedFileName
 
 
 def ocrFunc(image_path, reader):
@@ -231,7 +231,6 @@ while cap.isOpened():
                                 round(box[3]))
             maskedFrame[y1:y2, x1:x2, :] = frame[y1:y2, x1:x2, :]
 
-        cv2.imshow("Mask", maskedFrame)
         # Saving masked Frame
         cv2.imwrite(maskedFileName, maskedFrame)
 
