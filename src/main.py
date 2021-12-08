@@ -2,11 +2,54 @@ import cv2
 import math
 import numpy as np
 import time
-
+from sklearn.cluster import DBSCAN
 import torch
+import sys
+import os
 import yolov5
+import tensorflow as tf
+from PIL import Image
+import tensorflow_hub as hub
+import easyocr
+
+os.environ["TFHUB_DOWNLOAD_PROGRESS"] = "True"
 
 from yolov5 import train, val, detect, export, YOLOv5
+
+
+def preprocess_image(image_path):
+    hr_image = tf.image.decode_image(tf.io.read_file(image_path))
+    if hr_image.shape[-1] == 4:
+        hr_image = hr_image[..., :-1]
+    hr_size = (tf.convert_to_tensor(hr_image.shape[:-1]) // 4) * 4
+    hr_image = tf.image.crop_to_bounding_box(hr_image, 0, 0, hr_size[0], hr_size[1])
+    hr_image = tf.cast(hr_image, tf.float32)
+    return tf.expand_dims(hr_image, 0)
+
+
+def save_image(image, filename):
+    if not isinstance(image, Image.Image):
+        image = tf.clip_by_value(image, 0, 255)
+        image = Image.fromarray(tf.cast(image, tf.uint8).numpy())
+    image.save(filename)
+
+
+def superResoluteFunc(maskedFileName, superResolution_model):
+    hr_image = preprocess_image(maskedFileName)
+
+    fake_image = superResolution_model(hr_image)
+    fake_image = tf.squeeze(fake_image)
+
+    SRImgfileName = maskedFileName.split('.')[0]  # + "_Super_Resoluted"
+
+    save_image(tf.squeeze(fake_image), filename=SRImgfileName)
+
+    return SRImgfileName
+
+
+def ocrFunc(image_path, reader):
+    result = reader.readtext(image_path, paragraph="False", detail=0)
+    return result
 
 
 def vehicleDetectionFunc(vech_model, filename, frame):
@@ -83,7 +126,8 @@ def licenseDetectionFunc(license_model, maskedFileName):
     return license_dic
 
 
-vech_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', device='cpu')  # load on CPU
+# vech_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', device='cpu')  # load on CPU
+# vech_model.classes = [2, 3, 5, 7]  # 'car', 'motorcycle', 'bus', 'truck'
 
 # set model params for License detection
 model_path = "../yolo/torch/best.pt"
@@ -95,14 +139,21 @@ license_model = YOLOv5(model_path, device)
 # Vehicle labels
 labels_dic = {2: 'car', 3: 'motorcycle', 5: 'bus', 7: 'truck'}
 
-# Selecting only Vehicle classes
-vech_model.classes = [2, 3, 5, 7]  # 'car', 'motorcycle', 'bus', 'truck'
-
 # start = time.time()
 # main code goes here
 cap = cv2.VideoCapture("../data/video 15.mp4")
 frameRate = cap.get(5)  # frame rate
 frameCount = 1
+
+object_detector = cv2.createBackgroundSubtractorMOG2(history=200, varThreshold=100)
+
+# Super Resolution model weights
+SAVED_MODEL_PATH = "https://tfhub.dev/captain-pool/esrgan-tf2/1"
+
+superResolution_model = hub.load(SAVED_MODEL_PATH)
+
+# easyocr weights
+reader = easyocr.Reader(['en'])
 
 while cap.isOpened():
 
@@ -123,10 +174,64 @@ while cap.isOpened():
         cv2.imwrite(filename, frame)
         maskedFileName = '../maskedFrames/' + str(int(frameCount)) + ".png"
 
-        (maskedFrame, vech_dic) = vehicleDetectionFunc(vech_model,
-                                                       filename,
-                                                       frame)
+        mask = object_detector.apply(frame)
+        _, mask = cv2.threshold(mask, 254, 255, cv2.THRESH_OTSU)
+        # mask = cv2.GaussianBlur(mask, (11, 11), 4)
+        # kernel = np.ones((5, 5), np.uint8)
+        # mask = cv2.dilate(mask, kernel, iterations=10)
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
+        rects = []
+
+        # Bool array indicating which initial bounding rect has
+        # already been used
+        rectsUsed = []
+        rect_center = []
+        # Just initialize bounding rects and set all bools to false
+        for cnt in contours:
+            if cv2.contourArea(cnt) > 1500:
+                x, y, w, h = cv2.boundingRect(cnt)
+
+                rect_center.append((int(((x + w // 2) * 25) / width), int(((y + h // 2) * 25) / height)))
+                rects.append([x, y, w, h])
+        if not rect_center:
+            continue
+        clustering = DBSCAN(eps=3, min_samples=2).fit(np.array(rect_center))
+
+        final_rect = []
+        rect_grps = [[] for i in range(max(clustering.labels_) + 1)]
+        for ndx, label in enumerate(clustering.labels_):
+            if label == -1:
+                final_rect.append(rects[ndx])
+            else:
+                rect_grps[label].append(rects[ndx])
+
+        for grp in rect_grps:
+            if not grp:
+                break
+            x_min, y_min, x_max, y_max = sys.maxsize, sys.maxsize, 0, 0
+            for rec in grp:
+                if rec[0] < x_min:
+                    x_min = rec[0]
+                if rec[1] < y_min:
+                    y_min = rec[1]
+                if rec[0] + rec[2] > x_max:
+                    x_max = rec[0] + rec[2]
+                if rec[1] + rec[3] > y_max:
+                    y_max = rec[1] + rec[3]
+            final_rect.append([x_min, y_min, x_max, y_max])
+
+        acceptedRects = final_rect
+
+        maskedFrame = np.zeros(frame.shape, dtype=float)
+        for box in acceptedRects:
+            (x1, y1, x2, y2) = (round(box[0]),
+                                round(box[1]),
+                                round(box[2]),
+                                round(box[3]))
+            maskedFrame[y1:y2, x1:x2, :] = frame[y1:y2, x1:x2, :]
+
+        cv2.imshow("Mask", maskedFrame)
         # Saving masked Frame
         cv2.imwrite(maskedFileName, maskedFrame)
 
@@ -138,6 +243,8 @@ while cap.isOpened():
         for box in license_dic['boxes']:
             (x1, y1, x2, y2) = (box[0], box[1], box[2], box[3])
 
+
+
             # Image.fromarray(maskedFrame[y1:y2, x1:x2, :])
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
@@ -145,6 +252,10 @@ while cap.isOpened():
 
             cv2.imwrite(detectedLicenseFileName,
                         maskedFrame[y1:y2, x1:x2, :])
+
+            detectedLicenseFileName = superResoluteFunc(detectedLicenseFileName, superResolution_model)
+            text = ocrFunc(detectedLicenseFileName, reader)
+            print(text)
 
             ll += 1
 
