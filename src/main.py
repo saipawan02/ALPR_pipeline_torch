@@ -70,7 +70,7 @@ def ocrFunc(image_path, ocr):
       avg = avg/len(result)
 
     st = re.sub('[\W_]+', '', st)
-    if(len(st) < 9):
+    if(len(st) < 9 or len(st) > 13):
         # ss = st[0:-4]
         # print(ss)   
         # for i in st[-4:-1]:
