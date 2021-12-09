@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <link rel="stylesheet"  href="styles_table.css">
+    </head>
+    <body >
+        <script>
+            var plate;
+            fetch('report.json')
+                            .then(response => response.json())
+                            .then(json =>{
+																console.log(json)
+                                this.plate = json.result;
+                                var html_string = "<div><img src=../frames/currentFrame.jpg width=600 height=400 alt=text></div><br/>"
+																
+																html_string+="<tr><td>frame Number</td><td>time_stamp</td><td>license_plate</td><td>text</td> <td>confidence</td></tr>";
+                                for(i=0;i<plate.length;i++){
+                                    html_string+="<tr><td>"+plate[i].frame_number+"</td><td>"+plate[i].time_stamp+"</td><td><img src="+plate[i].license_plate+" alt=text></td><td>"+plate[i].text+"</td><td>"+plate[i].confidence+"</td></tr>";
+                                }   
+                                document.getElementById("dis").innerHTML=html_string;
+                            });
+
+ 
+</script>
+        <table id="dis" ></table>
+
+    </body>
+</html>

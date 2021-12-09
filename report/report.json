@@ -1,0 +1,74 @@
+{
+    "result": [
+        {
+            "frame_number": 7,
+            "time_stamp": "2021-12-09 18:56:21.898424",
+            "license_plate": "../numberplates/71.png",
+            "text": "UP14CY5585",
+            "confidence": "0.943"
+        },
+        {
+            "frame_number": 8,
+            "time_stamp": "2021-12-09 18:56:22.985423",
+            "license_plate": "../numberplates/81.png",
+            "text": "UP14CY5585",
+            "confidence": "0.996"
+        },
+        {
+            "frame_number": 29,
+            "time_stamp": "2021-12-09 18:56:51.536367",
+            "license_plate": "../numberplates/291.png",
+            "text": "HR26BA8288",
+            "confidence": "0.999"
+        },
+        {
+            "frame_number": 30,
+            "time_stamp": "2021-12-09 18:56:52.680363",
+            "license_plate": "../numberplates/301.png",
+            "text": "HR26BA8288",
+            "confidence": "1.0"
+        },
+        {
+            "frame_number": 31,
+            "time_stamp": "2021-12-09 18:56:53.838078",
+            "license_plate": "../numberplates/311.png",
+            "text": "HR26BA8288",
+            "confidence": "1.0"
+        },
+        {
+            "frame_number": 32,
+            "time_stamp": "2021-12-09 18:56:55.046255",
+            "license_plate": "../numberplates/321.png",
+            "text": "HR26BA8288",
+            "confidence": "0.997"
+        },
+        {
+            "frame_number": 44,
+            "time_stamp": "2021-12-09 18:57:07.581396",
+            "license_plate": "../numberplates/441.png",
+            "text": "UP14CL8761",
+            "confidence": "0.971"
+        },
+        {
+            "frame_number": 46,
+            "time_stamp": "2021-12-09 18:57:09.564399",
+            "license_plate": "../numberplates/461.png",
+            "text": "FDL5CE4732",
+            "confidence": "0.919"
+        },
+        {
+            "frame_number": 47,
+            "time_stamp": "2021-12-09 18:57:10.646395",
+            "license_plate": "../numberplates/471.png",
+            "text": "DL5CE4732",
+            "confidence": "0.903"
+        },
+        {
+            "frame_number": 48,
+            "time_stamp": "2021-12-09 18:57:11.771394",
+            "license_plate": "../numberplates/481.png",
+            "text": "PDL5CE4732",
+            "confidence": "0.9"
+        }
+    ]
+}
