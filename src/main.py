@@ -12,6 +12,10 @@ from PIL import Image
 import tensorflow_hub as hub
 # import easyocr
 from paddleocr import PaddleOCR,draw_ocr
+import cv2
+import numpy as np
+import glob
+import re
 
 os.environ["TFHUB_DOWNLOAD_PROGRESS"] = "True"
 
@@ -52,16 +56,30 @@ def ocrFunc(image_path, ocr):
     output = []
     st = ""
     avg = 0
+    dic = {'O': 0,'o':0,'A':4,'J':3,'l':1, 'L':1,'i':1,'I':1,'S':5, 'G':6,'H':8, 'D':0,'B':8,'q':9,'e':8,'b':6}
+    
     result = ocr.ocr(image_path, cls=True)
     print(result,image_path)
     for line in result:
       output.append(line[-1])
+    
       st += line[-1][0] 
       avg += line[-1][1] 
     #   print(image_path, line[-1])
     if len(result)!=0:
       avg = avg/len(result)
 
+    st = re.sub('[\W_]+', '', st)
+    if(len(st) < 9):
+        # ss = st[0:-4]
+        # print(ss)   
+        # for i in st[-4:-1]:
+        #     a = i
+        #     if i in dic.keys():
+        #         a = str(dic[i])
+        #     ss+=a
+        st = ""
+    print(st)
     return (st,avg) 
 
 
@@ -107,12 +125,12 @@ def vehicleDetectionFunc(vech_model, filename, frame):
     return (maskedFrame, vech_dic)
 
 
-def licenseDetectionFunc(license_model, maskedFileName):
-    license_results = license_model.predict(maskedFileName)
+def licenseDetectionFunc(license_model, maskedFrame):
+    license_results = license_model.predict(maskedFrame)
 
     # parse results
     predictions = license_results.pred[0]
-    boxes = predictions[:, :4].numpy()  # x1, x2, y1, y2
+    boxes = predictions[:, :4].cpu().numpy() # x1, x2, y1, y2
     scores = predictions[:, 4]
     categories = predictions[:, 5]
 
@@ -144,10 +162,11 @@ def licenseDetectionFunc(license_model, maskedFileName):
 
 # set model params for License detection
 model_path = "../yolo/torch/best.pt"
-device = "cpu"  # or "cpu" or "cuda:0"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 # init yolov5 model for license detection
 license_model = YOLOv5(model_path, device)
+
 
 # Vehicle labels
 labels_dic = {2: 'car', 3: 'motorcycle', 5: 'bus', 7: 'truck'}
@@ -170,10 +189,16 @@ object_detector = cv2.createBackgroundSubtractorMOG2(history=200, varThreshold=1
 
 ocr = PaddleOCR(use_angle_cls=True, lang='en') 
 
+
+out = cv2.VideoWriter('output_video.avi',cv2.VideoWriter_fourcc(*'DIVX'), 60, (500,500))
+
+
 while cap.isOpened():
 
     frameId = cap.get(1)  # current frame number
     ret, frame = cap.read()
+    if(frame is None):
+        break
     height, width, _ = frame.shape
 
     # frame = frame[height // 2:, ::]
@@ -185,9 +210,9 @@ while cap.isOpened():
         start = time.time()
         print(frameCount)
 
-        filename = '../frames/' + str(int(frameCount)) + ".png"
-        cv2.imwrite(filename, frame)
-        maskedFileName = '../maskedFrames/' + str(int(frameCount)) + ".png"
+        # filename = '../frames/' + str(int(frameCount)) + ".png"
+        # cv2.imwrite(filename, frame)
+        # maskedFileName = '../maskedFrames/' + str(int(frameCount)) + ".png"
 
         mask = object_detector.apply(frame)
         _, mask = cv2.threshold(mask, 254, 255, cv2.THRESH_OTSU)
@@ -248,9 +273,9 @@ while cap.isOpened():
 
         # cv2.imshow("Mask", maskedFrame)
         # Saving masked Frame
-        cv2.imwrite(maskedFileName, maskedFrame)
+        # cv2.imwrite(maskedFileName, maskedFrame)
 
-        license_dic = licenseDetectionFunc(license_model, maskedFileName)
+        license_dic = licenseDetectionFunc(license_model, maskedFrame)
 
         recognizedTextList = []
 
@@ -262,7 +287,7 @@ while cap.isOpened():
 
             # Image.fromarray(maskedFrame[y1:y2, x1:x2, :])
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
+            
             detectedLicenseFileName = '../numberplates/' + str(int(frameCount)) + str(ll) + ".png"
 
             cv2.imwrite(detectedLicenseFileName,
@@ -271,7 +296,9 @@ while cap.isOpened():
             # detectedLicenseFileName = superResoluteFunc(detectedLicenseFileName, superResolution_model)
             text_disp,conf = ocrFunc(detectedLicenseFileName, ocr)
             # print(text)
-            cv2.putText(frame,text_disp + " " + str(round(conf, 3)), (x1, y1), cv2.FONT_HERSHEY_PLAIN, 2, (0,0,255), 3)
+            if(len(text_disp)!=0):
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
+                cv2.putText(frame,text_disp + " " + str(round(conf, 3)), (x1, y1), cv2.FONT_HERSHEY_PLAIN, 2, (0,0,255), 3)
 
             ll += 1
 
@@ -281,10 +308,12 @@ while cap.isOpened():
         elapsed_time = time.time() - start
         fps = 1 / elapsed_time
 
-        cv2.putText(frame, "FPS: " + str(round(fps, 2)), (10, 50), cv2.FONT_HERSHEY_PLAIN, 4, (0, 255, 0), 3)
+        # cv2.putText(frame, "FPS: " + str(round(fps, 2)), (10, 50), cv2.FONT_HERSHEY_PLAIN, 4, (0, 255, 0), 3)
 
         cv2.namedWindow('Frame', cv2.WINDOW_NORMAL)
         cv2.imshow("Frame", frame)
+
+        out.write(frame)
 
         key = cv2.waitKey(30)
         if key == 27:
@@ -292,4 +321,5 @@ while cap.isOpened():
         frameCount += 1  # Incrementing frameCount value
 
 cap.release()
+out.release()
 print("Done!")
