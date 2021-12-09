@@ -10,46 +10,59 @@ import yolov5
 import tensorflow as tf
 from PIL import Image
 import tensorflow_hub as hub
-import easyocr
+# import easyocr
+from paddleocr import PaddleOCR,draw_ocr
 
 os.environ["TFHUB_DOWNLOAD_PROGRESS"] = "True"
 
 from yolov5 import train, val, detect, export, YOLOv5
 
 
-def preprocess_image(image_path):
-    hr_image = tf.image.decode_image(tf.io.read_file(image_path))
-    if hr_image.shape[-1] == 4:
-        hr_image = hr_image[..., :-1]
-    hr_size = (tf.convert_to_tensor(hr_image.shape[:-1]) // 4) * 4
-    hr_image = tf.image.crop_to_bounding_box(hr_image, 0, 0, hr_size[0], hr_size[1])
-    hr_image = tf.cast(hr_image, tf.float32)
-    return tf.expand_dims(hr_image, 0)
+# def preprocess_image(image_path):
+#     hr_image = tf.image.decode_image(tf.io.read_file(image_path))
+#     if hr_image.shape[-1] == 4:
+#         hr_image = hr_image[..., :-1]
+#     hr_size = (tf.convert_to_tensor(hr_image.shape[:-1]) // 4) * 4
+#     hr_image = tf.image.crop_to_bounding_box(hr_image, 0, 0, hr_size[0], hr_size[1])
+#     hr_image = tf.cast(hr_image, tf.float32)
+#     return tf.expand_dims(hr_image, 0)
 
 
-def save_image(image, filename):
-    if not isinstance(image, Image.Image):
-        image = tf.clip_by_value(image, 0, 255)
-        image = Image.fromarray(tf.cast(image, tf.uint8).numpy())
-    image.save(filename)
+# def save_image(image, filename):
+#     if not isinstance(image, Image.Image):
+#         image = tf.clip_by_value(image, 0, 255)
+#         image = Image.fromarray(tf.cast(image, tf.uint8).numpy())
+#     image.save(filename)
 
 
-def superResoluteFunc(maskedFileName, superResolution_model):
-    hr_image = preprocess_image(maskedFileName)
+# def superResoluteFunc(maskedFileName, superResolution_model):
+#     hr_image = preprocess_image(maskedFileName)
 
-    fake_image = superResolution_model(hr_image)
-    fake_image = tf.squeeze(fake_image)
+#     fake_image = superResolution_model(hr_image)
+#     fake_image = tf.squeeze(fake_image)
 
-    # SRImgfileName = maskedFileName.split('.')[0]  # + "_Super_Resoluted"
+#     # SRImgfileName = maskedFileName.split('.')[0]  # + "_Super_Resoluted"
 
-    save_image(tf.squeeze(fake_image), filename=maskedFileName)
+#     save_image(tf.squeeze(fake_image), filename=maskedFileName)
 
-    return maskedFileName
+#     return maskedFileName
 
 
-def ocrFunc(image_path, reader):
-    result = reader.readtext(image_path, paragraph="False", detail=0)
-    return result
+def ocrFunc(image_path, ocr):
+    output = []
+    st = ""
+    avg = 0
+    result = ocr.ocr(image_path, cls=True)
+    print(result,image_path)
+    for line in result:
+      output.append(line[-1])
+      st += line[-1][0] 
+      avg += line[-1][1] 
+    #   print(image_path, line[-1])
+    if len(result)!=0:
+      avg = avg/len(result)
+
+    return (st,avg) 
 
 
 def vehicleDetectionFunc(vech_model, filename, frame):
@@ -141,19 +154,21 @@ labels_dic = {2: 'car', 3: 'motorcycle', 5: 'bus', 7: 'truck'}
 
 # start = time.time()
 # main code goes here
-cap = cv2.VideoCapture("../data/video 15.mp4")
+cap = cv2.VideoCapture("../data/video 3.mp4")
 frameRate = cap.get(5)  # frame rate
 frameCount = 1
 
 object_detector = cv2.createBackgroundSubtractorMOG2(history=200, varThreshold=100)
 
 # Super Resolution model weights
-SAVED_MODEL_PATH = "https://tfhub.dev/captain-pool/esrgan-tf2/1"
+# SAVED_MODEL_PATH = "https://tfhub.dev/captain-pool/esrgan-tf2/1"
 
-superResolution_model = hub.load(SAVED_MODEL_PATH)
+# superResolution_model = hub.load(SAVED_MODEL_PATH)
 
 # easyocr weights
-reader = easyocr.Reader(['en'])
+# reader = easyocr.Reader(['en'])
+
+ocr = PaddleOCR(use_angle_cls=True, lang='en') 
 
 while cap.isOpened():
 
@@ -161,7 +176,7 @@ while cap.isOpened():
     ret, frame = cap.read()
     height, width, _ = frame.shape
 
-    frame = frame[height // 2:, ::]
+    # frame = frame[height // 2:, ::]
 
     if not ret:
         break
@@ -231,6 +246,7 @@ while cap.isOpened():
                                 round(box[3]))
             maskedFrame[y1:y2, x1:x2, :] = frame[y1:y2, x1:x2, :]
 
+        # cv2.imshow("Mask", maskedFrame)
         # Saving masked Frame
         cv2.imwrite(maskedFileName, maskedFrame)
 
@@ -252,9 +268,10 @@ while cap.isOpened():
             cv2.imwrite(detectedLicenseFileName,
                         maskedFrame[y1:y2, x1:x2, :])
 
-            detectedLicenseFileName = superResoluteFunc(detectedLicenseFileName, superResolution_model)
-            text = ocrFunc(detectedLicenseFileName, reader)
-            print(text)
+            # detectedLicenseFileName = superResoluteFunc(detectedLicenseFileName, superResolution_model)
+            text_disp,conf = ocrFunc(detectedLicenseFileName, ocr)
+            # print(text)
+            cv2.putText(frame,text_disp + " " + str(round(conf, 3)), (x1, y1), cv2.FONT_HERSHEY_PLAIN, 2, (0,0,255), 3)
 
             ll += 1
 
@@ -265,6 +282,7 @@ while cap.isOpened():
         fps = 1 / elapsed_time
 
         cv2.putText(frame, "FPS: " + str(round(fps, 2)), (10, 50), cv2.FONT_HERSHEY_PLAIN, 4, (0, 255, 0), 3)
+
         cv2.namedWindow('Frame', cv2.WINDOW_NORMAL)
         cv2.imshow("Frame", frame)
 
